@@ -42,4 +42,3 @@ npm run deploy:workers
 - hono: ^4.6.13
 - jszip: ^3.10.1
 - wrangler: ^3.88.0
-```
