@@ -2,7 +2,8 @@
   "name": "pera1",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy:workers": "wrangler deploy --minify"
+    "deploy:workers": "wrangler deploy --minify",
+    "tail": "wrangler tail"
   },
   "dependencies": {
     "hono": "^4.6.13",

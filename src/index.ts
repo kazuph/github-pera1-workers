@@ -29,10 +29,68 @@ const createErrorResponse = (
 	);
 };
 
+const fetchZip = async (owner: string, repo: string, branch: string) => {
+	const zipUrl = `https://codeload.github.com/${owner}/${repo}/zip/${branch}`;
+	console.log(`📦 Fetching zip from: ${zipUrl}`);
+
+	return await fetch(zipUrl, {
+		headers: {
+			"User-Agent": "Pera1-Bot",
+		},
+	});
+};
+
+// ツリー表示のための共通関数
+const createTreeDisplay = (
+	fileTree: Map<string, { size: number; content: string }>,
+	showSize = false,
+) => {
+	const dirs = new Set<string>();
+
+	// すべてのパスを収集
+	for (const [path] of fileTree) {
+		const parts = path.split("/");
+		for (let i = 1; i <= parts.length; i++) {
+			dirs.add(parts.slice(0, i).join("/"));
+		}
+	}
+
+	// ソートしてツリー表示を生成
+	const sortedDirs = Array.from(dirs).sort();
+	let result = "";
+
+	for (const dir of sortedDirs) {
+		const depth = dir.split("/").length - 1;
+		const indent = "  ".repeat(depth);
+		const name = dir.split("/").pop() || "";
+		const isFile = !Array.from(dirs).some((d) => d.startsWith(dir + "/"));
+
+		if (showSize && isFile) {
+			const fileInfo = fileTree.get(dir);
+			const size = fileInfo ? (fileInfo.size / 1024).toFixed(2) : "0.00";
+			result += `${indent}${isFile ? "📄" : "📂"} ${name} (${size} KB)\n`;
+		} else {
+			result += `${indent}${isFile ? "📄" : "📂"} ${name}\n`;
+		}
+	}
+
+	return result;
+};
+
 app.get("/*", async (c) => {
 	try {
 		const url = new URL(c.req.url);
 		const path = url.pathname.slice(1);
+		const params = url.searchParams;
+
+		// 新しいパラメータの取得
+		const targetDir = params.get("dir")?.trim() || "";
+		const targetExts =
+			params
+				.get("ext")
+				?.split(",")
+				.map((e) => e.trim().toLowerCase()) || [];
+		const isTreeMode = params.get("mode") === "tree";
 
 		console.log(`📥 Received request with path: ${path}`);
 
@@ -74,20 +132,19 @@ app.get("/*", async (c) => {
 
 		const owner = segments[0];
 		const repo = segments[1];
-		const branch = segments[2] ?? "main";
+		let branch = segments[2] ?? "main";
 
 		console.log(
 			`📥 Processing GitHub repo: ${owner}/${repo} (branch: ${branch})`,
 		);
 
-		const zipUrl = `https://codeload.github.com/${owner}/${repo}/zip/${branch}`;
-		console.log(`📦 Fetching zip from: ${zipUrl}`);
-
-		const zipResp = await fetch(zipUrl, {
-			headers: {
-				"User-Agent": "Pera1-Bot",
-			},
-		});
+		// Try main branch first, then master if main fails
+		let zipResp = await fetchZip(owner, repo, branch);
+		if (!zipResp.ok && branch === "main") {
+			console.log("⚠️ main branch failed, trying master branch");
+			branch = "master";
+			zipResp = await fetchZip(owner, repo, branch);
+		}
 
 		if (!zipResp.ok) {
 			const errorMsg = `Failed to fetch zip: ${zipResp.status} ${zipResp.statusText}`;
@@ -225,13 +282,42 @@ app.get("/*", async (c) => {
 			return false;
 		};
 
+		const shouldIncludeFile = (filename: string) => {
+			// ディレクトリフィルタ
+			if (targetDir && !filename.startsWith(targetDir)) {
+				return false;
+			}
+
+			// 拡張子フィルタ
+			if (targetExts.length > 0) {
+				const ext = filename.split(".").pop()?.toLowerCase() || "";
+				if (!targetExts.includes(ext)) {
+					return false;
+				}
+			}
+
+			return true;
+		};
+
 		for (const fileObj of Object.values(jszip.files)) {
 			if (!fileObj.dir && fileObj.name.startsWith(rootPrefix)) {
 				const fileRelative = fileObj.name.slice(rootPrefix.length);
+
+				// ツリーモードの場合はフィルタリングなしで全ファイルをツリー表示用に収集
+				if (isTreeMode) {
+					fileTree.set(fileRelative, { size: 0, content: "" });
+					continue;
+				}
+
+				// 新しいフィルタを適用
+				if (!shouldIncludeFile(fileRelative)) {
+					continue;
+				}
+
 				const content = await fileObj.async("string");
 				const size = new TextEncoder().encode(content).length;
 
-				// Skip filtered files
+				// 既存のフィルタも適用
 				if (shouldSkipFile(fileRelative, size, content)) {
 					continue;
 				}
@@ -241,16 +327,18 @@ app.get("/*", async (c) => {
 			}
 		}
 
-		// Add file tree
-		resultText += "# 📁 File Tree\n\n";
-		for (const [path, { size }] of fileTree) {
-			const parts = path.split("/");
-			const indent = "  ".repeat(parts.length - 1);
-			const fileName = parts[parts.length - 1];
-			resultText += `${indent}- ${fileName} (${(size / 1024).toFixed(2)} KB)\n`;
+		// ディレクトリツリーの表示
+		resultText = "";
+		if (isTreeMode) {
+			resultText += "# 📁 Directory Structure\n\n";
+			resultText += createTreeDisplay(fileTree, false);
+			return c.text(resultText, 200);
 		}
 
-		// Add separator
+		// 通常モードの場合
+		resultText += "# 📁 File Tree\n\n";
+		resultText += createTreeDisplay(fileTree, true);
+
 		resultText += `\n# 📝 Files (Total: ${(totalSize / 1024).toFixed(2)} KB)\n\n`;
 
 		// Add file contents
