@@ -10,6 +10,42 @@ This project is a web application built using Cloudflare Workers and the Hono fr
 - 🌐 Accessible from anywhere
 - 💨 Lightweight and efficient
 
+## 🛠 Usage
+
+### Basic URL Format
+```
+https://your-worker-domain/github.com/owner/repo
+```
+
+### Query Parameters
+- `dir`: Filter files by directory paths (comma-separated)
+  ```
+  ?dir=src/components,tests/unit
+  ```
+- `ext`: Filter files by extensions (comma-separated)
+  ```
+  ?ext=ts,tsx,js
+  ```
+- `mode`: Display mode
+  ```
+  ?mode=tree  # Shows directory structure only
+  ```
+
+### Examples
+```
+# Show all files in the src directory
+https://your-worker-domain/github.com/owner/repo?dir=src
+
+# Show only TypeScript files
+https://your-worker-domain/github.com/owner/repo?ext=ts,tsx
+
+# Show directory structure
+https://your-worker-domain/github.com/owner/repo?mode=tree
+
+# Combined usage
+https://your-worker-domain/github.com/owner/repo?dir=src&ext=ts&mode=tree
+```
+
 ## 🛠️ Tech Stack
 - 🌐 Cloudflare Workers
 - ⚡ Hono (Fast Web Framework)
