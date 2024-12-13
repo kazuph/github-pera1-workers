@@ -1,5 +1,6 @@
 {
   "name": "pera1",
+  "version": "1.0.0",
   "scripts": {
     "dev": "wrangler dev",
     "deploy:workers": "wrangler deploy --minify",

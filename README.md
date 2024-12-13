@@ -30,6 +30,10 @@ https://your-worker-domain/github.com/owner/repo
   ```
   ?mode=tree  # Shows directory structure only
   ```
+- `branch`: Specify repository branch
+  ```
+  ?branch=develop
+  ```
 
 ### Examples
 ```

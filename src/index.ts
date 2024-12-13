@@ -206,6 +206,7 @@ app.get("/*", async (c) => {
 				.map((e) => e.trim().toLowerCase()) || []
 		).filter((e) => e);
 		const isTreeMode = params.get("mode") === "tree";
+		const paramBranch = params.get("branch")?.trim();
 
 		if (!path) {
 			return createErrorResponse(c, "", "No repository URL provided", 400);
@@ -233,7 +234,15 @@ app.get("/*", async (c) => {
 
 		const owner = segments[0];
 		const repo = segments[1];
-		let branch = segments[2] ?? "main";
+
+		// ブランチ名の取得ロジックを改善
+		let branch = paramBranch;
+		if (!branch && segments.length > 3 && segments[2] === "tree") {
+			// segments[3]以降を結合してブランチ名に
+			branch = segments.slice(3).join("/");
+		} else {
+			branch = "main";
+		}
 
 		// ZIP取得
 		let zipResp = await fetchZip(owner, repo, branch);
