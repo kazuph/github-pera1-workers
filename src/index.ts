@@ -207,6 +207,7 @@ app.get("/*", async (c) => {
 		).filter((e) => e);
 		const isTreeMode = params.get("mode") === "tree";
 		const paramBranch = params.get("branch")?.trim();
+		const targetFile = params.get("file")?.trim();
 
 		if (!path) {
 			return createErrorResponse(c, "", "No repository URL provided", 400);
@@ -279,16 +280,23 @@ app.get("/*", async (c) => {
 
 			const fileRelative = fileObj.name.slice(rootPrefix.length);
 
+			// 単一ファイル指定がある場合、そのファイルのみを処理
+			if (targetFile && fileRelative !== targetFile) {
+				continue;
+			}
+
 			// ツリーモードでもフィルタを適用し、指定dirやextに該当しないファイルは除外する
 			if (!shouldIncludeFile(fileRelative, targetDirs, targetExts)) {
 				continue;
 			}
 
-			if (isTreeMode) {
-				// ツリーモードではコンテンツを読み込まず、ツリーの構築のみ行う
+			const isReadmeFile = /readme\.md$/i.test(fileRelative);
+
+			if (isTreeMode && !isReadmeFile) {
+				// ツリーモードではREADME以外はコンテンツを読み込まず、ツリーの構築のみ行う
 				fileTree.set(fileRelative, { size: 0, content: "" });
 			} else {
-				// 通常モードはファイルコンテンツを読み込む
+				// 通常モードまたはREADMEファイルはファイルコンテンツを読み込む
 				const content = await fileObj.async("string");
 				const size = new TextEncoder().encode(content).length;
 
@@ -302,11 +310,33 @@ app.get("/*", async (c) => {
 			}
 		}
 
+		// 単一ファイル指定がある場合
+		if (targetFile) {
+			const fileEntry = Array.from(fileTree.entries()).find(([path]) => path === targetFile);
+			if (!fileEntry) {
+				return createErrorResponse(c, urlStr, `File not found: ${targetFile}`, 404);
+			}
+			
+			return c.text(fileEntry[1].content, 200);
+		}
+
 		// レスポンス生成
 		if (isTreeMode) {
-			// ツリーのみ表示
+			// ツリーのみ表示（READMEファイルの内容も含める）
 			let resultText = "# Directory Structure\n\n";
 			resultText += createTreeDisplay(fileTree, false);
+			
+			// READMEファイルがあれば追加
+			const readmeFiles = Array.from(fileTree.entries())
+				.filter(([path, { content }]) => /readme\.md$/i.test(path) && content);
+			
+			if (readmeFiles.length > 0) {
+				resultText += "\n# README Files\n\n";
+				for (const [path, { content }] of readmeFiles) {
+					resultText += `## ${path}\n\n${content}\n\n`;
+				}
+			}
+			
 			return c.text(resultText, 200);
 		} else {
 			// 通常モード：ツリー＋ファイル内容
