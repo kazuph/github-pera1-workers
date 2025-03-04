@@ -232,9 +232,12 @@ async function fetchZip(owner: string, repo: string, branch: string) {
 	});
 }
 
+// 定数
+const MAX_DISPLAY_FILE_SIZE = 30 * 1024; // 30KB
+
 // ディレクトリツリー文字列の生成
 function createTreeDisplay(
-	fileTree: Map<string, { size: number; content: string }>,
+	fileTree: Map<string, { size: number; content: string; isTruncated?: boolean }>,
 	showSize = false,
 ): string {
 	const dirs = new Set<string>();
@@ -257,8 +260,16 @@ function createTreeDisplay(
 
 		if (showSize && isFile) {
 			const fileInfo = fileTree.get(dir);
-			const size = fileInfo ? (fileInfo.size / 1024).toFixed(2) : "0.00";
-			result += `${indent}📄 ${name} (${size} KB)\n`;
+			if (fileInfo) {
+				const sizeKB = (fileInfo.size / 1024).toFixed(2);
+				if (fileInfo.isTruncated) {
+					result += `${indent}📄 ${name} (${sizeKB} KB→30KB truncated)\n`;
+				} else {
+					result += `${indent}📄 ${name} (${sizeKB} KB)\n`;
+				}
+			} else {
+				result += `${indent}📄 ${name} (0.00 KB)\n`;
+			}
 		} else {
 			result += `${indent}${isFile ? "📄" : "📂"} ${name}\n`;
 		}
@@ -457,8 +468,9 @@ app.get("/*", async (c) => {
 			(name) => name.startsWith(rootPrefix) && name.endsWith("tsconfig.json"),
 		);
 
-		const fileTree = new Map<string, { size: number; content: string }>();
-		let totalSize = 0;
+		const fileTree = new Map<string, { size: number; content: string; isTruncated?: boolean }>();
+		let originalTotalSize = 0; // 元のサイズ合計
+		let displayTotalSize = 0; // 表示用サイズ合計
 
 		for (const fileObj of Object.values(jszip.files)) {
 			if (fileObj.dir) continue;
@@ -490,9 +502,34 @@ app.get("/*", async (c) => {
 				if (shouldSkipFile(fileRelative, size, content, hasTsConfig)) {
 					continue;
 				}
-
-				totalSize += size;
-				fileTree.set(fileRelative, { size, content });
+				
+				// ファイルサイズが30KB以上なら切り捨て
+				let isTruncated = false;
+				let processedContent = content;
+				let displaySize = size;
+				
+				if (size > MAX_DISPLAY_FILE_SIZE) {
+					// 30KBまでの内容に切り捨て
+					processedContent = content.substring(0, MAX_DISPLAY_FILE_SIZE);
+					// 残りのサイズを計算
+					const remainingSize = (size - MAX_DISPLAY_FILE_SIZE) / 1024;
+					// 切り捨てメッセージを追加
+					processedContent += `\n\nThis file is too large, truncated at 30KB. There is ${remainingSize.toFixed(2)}KB remaining.`;
+					isTruncated = true;
+					// 表示用のサイズを30KBに制限
+					displaySize = MAX_DISPLAY_FILE_SIZE;
+				}
+				
+				// 元のサイズを合計に追加
+				originalTotalSize += size;
+				// 表示用サイズを合計に追加
+				displayTotalSize += displaySize;
+				
+				fileTree.set(fileRelative, { 
+					size, 
+					content: processedContent,
+					isTruncated
+				});
 			}
 		}
 
@@ -529,7 +566,7 @@ app.get("/*", async (c) => {
 			let resultText = "# 📁 File Tree\n\n";
 			resultText += createTreeDisplay(fileTree, true);
 
-			resultText += `\n# 📝 Files (Total: ${(totalSize / 1024).toFixed(2)} KB)\n\n`;
+			resultText += `\n# 📝 Files (Total: ${(originalTotalSize / 1024).toFixed(2)} KB→${(displayTotalSize / 1024).toFixed(2)} KB)\n\n`;
 			for (const [path, { content }] of fileTree) {
 				resultText += `\`\`\`${path}\n${content}\n\`\`\`\n\n`;
 			}
