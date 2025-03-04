@@ -1,0 +1,584 @@
+---
+description: honox usage
+globs: 
+alwaysApply: false
+---
+## Overview
+
+HonoX is a simple and fast meta-framework for creating full-stack websites or Web APIs, built on [Hono](https://hono.dev/), [Vite](https://vitejs.dev/), and UI libraries. It specializes in creating Multi-Page Applications (MPAs) with server-side rendering and optional client-side interactivity through Islands Architecture.
+
+## Key Features
+
+- **File-based routing** - Similar to Next.js with directories and pages
+- **Fast SSR** - Ultra-fast rendering powered by Hono
+- **BYOR (Bring Your Own Renderer)** - Flexibility to use various renderers, with hono/jsx as default
+- **Islands Architecture** - Client-side JavaScript hydration only for interactive components
+- **Middleware Support** - Leverages Hono's middleware ecosystem
+- **Tailwind CSS Integration** - Streamlined CSS styling with built-in Tailwind support
+- **Cloudflare Workers Optimized** - Rapid deployment to Cloudflare Workers
+
+## Current Status
+
+- Current Version: v0.1.38 (Alpha stage)
+- Breaking changes may be introduced without following semantic versioning
+- Will progress to Beta, then \"1.0\" as more production use cases emerge
+
+## Strengths & Use Cases
+
+### Best For:
+- **Web Sites** with limited interactivity
+- Multi-Page Applications (MPAs)
+- Content-focused websites
+- Sites with small isolated interactive components
+- Fast deployment to edge platforms, especially Cloudflare
+
+### Less Suitable For:
+- **Web Applications** with extensive interactivity
+- Single Page Applications (SPAs)
+- Applications requiring complex client-side state management
+- Projects requiring complex client-side routing
+
+## Basic Project Structure
+
+```
+.
+├── app
+│   ├── global.d.ts          // Type definitions
+│   ├── routes
+│   │   ├── _404.tsx         // Not found page
+│   │   ├── _error.tsx       // Error page
+│   │   ├── _renderer.tsx    // Renderer definition
+│   │   ├── about
+│   │   │   └── [name].tsx   // Dynamic route: /about/:name
+│   │   └── index.tsx        // Root route: /
+│   └── server.ts            // Server entry file
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
+```
+
+## Setup Guide
+
+### Installation
+
+```bash
+npm install hono honox
+```
+
+Or use the starter template:
+
+```bash
+npm create hono@latest
+# Then select 'x-basic' from the options
+```
+
+### Configuration
+
+#### vite.config.ts
+
+```ts
+import { defineConfig } from 'vite'
+import honox from 'honox/vite'
+
+export default defineConfig({
+  plugins: [honox()],
+})
+```
+
+#### Server Entry
+
+```ts
+// app/server.ts
+import { createApp } from 'honox/server'
+import { showRoutes } from 'hono/dev'
+
+const app = createApp()
+showRoutes(app)
+
+export default app
+```
+
+## Routing
+
+### 1. Using `createRoute()`
+
+```tsx
+// app/routes/index.tsx
+import { createRoute } from 'honox/factory'
+
+export default createRoute((c) => {
+  return c.render(
+    <div>
+      <h1>Hello!</h1>
+    </div>
+  )
+})
+```
+
+For other HTTP methods:
+
+```tsx
+export const POST = createRoute(async (c) => {
+  const { name } = await c.req.parseBody<{ name: string }>()
+  // ...
+  return c.redirect('/')
+})
+```
+
+### 2. Using a Hono instance
+
+```ts
+// app/routes/api/users.ts
+import { Hono } from 'hono'
+
+const app = new Hono()
+
+app.get('/', (c) => {
+  return c.json({ users: ['user1', 'user2'] })
+})
+
+app.get('/:id', (c) => {
+  const id = c.req.param('id')
+  return c.json({ id })
+})
+
+export default app
+```
+
+### 3. Simple JSX Function
+
+```tsx
+// app/routes/about.tsx
+export default function About() {
+  return <h1>About Page</h1>
+}
+```
+
+## Renderer Setup
+
+### Type Definition
+
+```ts
+// app/global.d.ts
+import type {} from 'hono'
+
+type Head = {
+  title?: string
+}
+
+declare module 'hono' {
+  interface ContextRenderer {
+    (content: string | Promise<string>, head?: Head): Response | Promise<Response>
+  }
+}
+```
+
+### Renderer Component
+
+```tsx
+// app/routes/_renderer.tsx
+import { jsxRenderer } from 'hono/jsx-renderer'
+import { Script, Link } from 'honox/server'
+
+export default jsxRenderer(({ children, title }) => {
+  return (
+    <html lang='en'>
+      <head>
+        <meta charset='UTF-8' />
+        <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+        <Link href='/app/style.css' rel='stylesheet' />
+        <Script src='/app/client.ts' async />
+        {title ? <title>{title}</title> : <></>}
+      </head>
+      <body>{children}</body>
+    </html>
+  )
+})
+```
+
+## Special Pages
+
+### Not Found Page
+
+```tsx
+// app/routes/_404.tsx
+import { NotFoundHandler } from 'hono'
+
+const handler: NotFoundHandler = (c) => {
+  return c.render(<h1>Sorry, Not Found...</h1>)
+}
+
+export default handler
+```
+
+### Error Page
+
+```tsx
+// app/routes/_error.tsx
+import { ErrorHandler } from 'hono'
+
+const handler: ErrorHandler = (e, c) => {
+  return c.render(<h1>Error! {e.message}</h1>)
+}
+
+export default handler
+```
+
+## Interactive Components (Islands)
+
+### Client Setup
+
+```ts
+// app/client.ts
+import { createClient } from 'honox/client'
+
+createClient()
+```
+
+### Island Component
+
+Islands can be defined in two ways:
+
+1. In the `islands` directory:
+
+```tsx
+// app/islands/counter.tsx
+import { useState } from 'hono/jsx'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+2. With a `$` prefix in any directory:
+
+```tsx
+// app/routes/$counter.tsx
+import { useState } from 'hono/jsx'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  )
+}
+```
+
+### Using Islands
+
+```tsx
+// app/routes/index.tsx
+import { createRoute } from 'honox/factory'
+import Counter from '../islands/counter'
+// or import Counter from './$counter'
+
+export default createRoute((c) => {
+  return c.render(
+    <div>
+      <h1>Hello</h1>
+      <Counter />
+    </div>
+  )
+})
+```
+
+## New Features
+
+### `Script` and `Link` Components
+
+These components automatically handle paths for JavaScript and CSS assets, adapting between development and production environments:
+
+```tsx
+import { Link, Script } from 'honox/server'
+
+// In renderer:
+<Link href='/app/style.css' rel='stylesheet' />
+<Script src='/app/client.ts' async />
+```
+
+### Title and Meta Tag Elevation
+
+React 19-style elevation of `<title>` and `<meta>` tags to the document head:
+
+```tsx
+// app/routes/index.tsx
+export default createRoute((c) => {
+  return c.render(
+    <div>
+      <title>Home Page</title>
+      <h1>Hello!</h1>
+    </div>
+  )
+})
+```
+
+### Smart JavaScript Loading
+
+When using the `Script` component, JavaScript is only loaded on pages that actually use island components, improving performance for static pages.
+
+### Suspense for Async Loading
+
+```tsx
+import { Suspense } from 'hono/jsx'
+
+const Component = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  return <div>Done!</div>
+}
+
+export default createRoute(async (c) => {
+  return c.render(
+    <div>
+      <Suspense fallback={<div>Loading...</div>}>
+        <Component />
+      </Suspense>
+    </div>
+  )
+})
+```
+
+## Middleware Usage
+
+### Inline Middleware
+
+```tsx
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
+
+const schema = z.object({
+  name: z.string().max(10),
+})
+
+export const POST = createRoute(zValidator('form', schema), async (c) => {
+  const { name } = c.req.valid('form')
+  // ...
+})
+```
+
+### Directory Middleware
+
+Create a `_middleware.ts` file to apply middleware to all routes in a directory:
+
+```ts
+// app/routes/_middleware.ts
+import { createRoute } from 'honox/factory'
+import { logger } from 'hono/logger'
+import { secureHeaders } from 'hono/secure-headers'
+
+export default createRoute(logger(), secureHeaders())
+```
+
+## Nested Layouts
+
+```tsx
+// app/routes/posts/_renderer.tsx
+import { jsxRenderer } from 'hono/jsx-renderer'
+
+export default jsxRenderer(({ children, Layout }) => {
+  return (
+    <Layout>
+      <nav>Posts Menu</nav>
+      <div>{children}</div>
+    </Layout>
+  )
+})
+```
+
+## Tailwind CSS Integration
+
+### Configuration
+
+```ts
+// vite.config.ts
+import tailwindcss from '@tailwindcss/vite'
+import honox from 'honox/vite'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [
+    honox({
+      client: { input: ['./app/style.css'] }
+    }),
+    tailwindcss()
+  ]
+})
+```
+
+### CSS File
+
+```css
+/* app/style.css */
+@import \"tailwindcss\" source(\"../app\");
+```
+
+## Deployment
+
+### Cloudflare Workers (Recommended)
+
+```toml
+# wrangler.toml
+name = \"my-project-name\"
+compatibility_date = \"2024-04-01\"
+compatibility_flags = [ \"nodejs_compat\" ]
+pages_build_output_dir = \"./dist\"
+```
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import honox from 'honox/vite'
+import build from '@hono/vite-build/cloudflare-pages'
+
+export default defineConfig({
+  plugins: [honox(), build()],
+})
+```
+
+Build command:
+```bash
+vite build --mode client && vite build
+```
+
+Deploy:
+```bash
+wrangler pages deploy
+```
+
+### Static Site Generation (SSG)
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import honox from 'honox/vite'
+import ssg from '@hono/vite-ssg'
+
+const entry = './app/server.ts'
+
+export default defineConfig(() => {
+  return {
+    plugins: [honox(), ssg({ entry })],
+  }
+})
+```
+
+## Custom UI Libraries (BYOR)
+
+### React Example
+
+```tsx
+// app/routes/_renderer.tsx
+import { reactRenderer } from '@hono/react-renderer'
+
+export default reactRenderer(({ children, title }) => {
+  return (
+    <html lang='en'>
+      <head>
+        <meta charSet='UTF-8' />
+        <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+        {title ? <title>{title}</title> : ''}
+      </head>
+      <body>{children}</body>
+    </html>
+  )
+})
+```
+
+```ts
+// app/client.ts
+import { createClient } from 'honox/client'
+
+createClient({
+  hydrate: async (elem, root) => {
+    const { hydrateRoot } = await import('react-dom/client')
+    hydrateRoot(root, elem)
+  },
+  createElement: async (type: any, props: any) => {
+    const { createElement } = await import('react')
+    return createElement(type, props)
+  },
+})
+```
+
+## Best Practices
+
+1. **Prefer MPAs over SPAs** - HonoX is designed for multi-page architectures
+2. **Use Islands Sparingly** - Add interactivity where needed, not everywhere
+3. **Leverage Suspense** - For asynchronous data loading with good UX
+4. **Keep State Simple** - Island components should manage localized state
+5. **Use Tailwind CSS** - The official starter template includes Tailwind support
+6. **Deploy to Cloudflare Workers** - For optimal performance and deployment speed
+
+## Advanced Features
+
+### Using MDX
+
+```ts
+// vite.config.ts
+import devServer from '@hono/vite-dev-server'
+import mdx from '@mdx-js/rollup'
+import honox from 'honox/vite'
+import remarkFrontmatter from 'remark-frontmatter'
+import remarkMdxFrontmatter from 'remark-mdx-frontmatter'
+import { defineConfig } from 'vite'
+
+export default defineConfig(() => {
+  return {
+    plugins: [
+      honox(),
+      mdx({
+        jsxImportSource: 'hono/jsx',
+        remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter],
+      }),
+    ],
+  }
+})
+```
+
+### Cloudflare Bindings
+
+```toml
+# wrangler.toml
+name = \"my-project-name\"
+compatibility_date = \"2024-04-01\"
+compatibility_flags = [ \"nodejs_compat\" ]
+pages_build_output_dir = \"./dist\"
+
+# [[kv_namespaces]]
+# binding = \"MY_KV_NAMESPACE\"
+# id = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"
+```
+
+```ts
+// vite.config.ts
+import honox from 'honox/vite'
+import adapter from '@hono/vite-dev-server/cloudflare'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [
+    honox({
+      devServer: {
+        adapter,
+      },
+    }),
+  ],
+})
+```
+
+## Conclusion
+
+HonoX is an excellent choice for building static or lightly interactive websites with modern JavaScript and TypeScript. It provides optimal performance through its focus on server-side rendering with islands of interactivity. 
+
+Its primary strength is delivering fast-loading, content-focused websites with exceptional SEO and initial load performance. It's particularly well-suited for deployment to edge platforms like Cloudflare Workers.
+
+While not designed for complex single-page applications, HonoX delivers an excellent developer experience for building traditional multi-page applications with modern tools and workflows.
+`
