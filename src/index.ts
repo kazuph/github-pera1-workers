@@ -462,7 +462,24 @@ app.get("/*", async (c) => {
 		// 拡張子はクエリパラメータからのみ取得
 		const targetExts = queryExts || [];
 		// 単一ファイル指定の決定 (クエリパラメータ > URLパス)
-		const targetFile = queryFile || urlFilePath;
+		// 単一ファイル指定の決定 (クエリパラメータ > URLパス > URLパス内のディレクトリ + クエリパラメータのファイル)
+		let targetFile: string | undefined;
+		if (queryFile) {
+			// クエリパラメータの file が最優先
+			if (urlDir) {
+				// URLにディレクトリパスがあり、クエリにファイルパスがある場合、結合
+				// パスの結合: スラッシュの重複を避ける
+				const basePath = urlDir.endsWith('/') ? urlDir : urlDir + '/';
+				const relativePath = queryFile.startsWith('/') ? queryFile.slice(1) : queryFile;
+				targetFile = basePath + relativePath;
+			} else {
+				// URLにディレクトリパスがなく、クエリにファイルパスがある場合
+				targetFile = queryFile;
+			}
+		} else if (urlFilePath) {
+			// クエリパラメータがなく、URLが /blob/ 形式の場合
+			targetFile = urlFilePath;
+		}
 
 		// ZIP取得
 		// ZIP取得とブランチのフォールバック処理
@@ -525,15 +542,18 @@ app.get("/*", async (c) => {
 
 			const fileRelative = fileObj.name.slice(rootPrefix.length);
 
-			// 単一ファイル指定がある場合、そのファイル以外はスキップ
-			if (targetFile && fileRelative !== targetFile) {
-				continue;
-			}
-
-			// フィルタリング (ディレクトリと拡張子)
-			// shouldIncludeFile に finalTargetDirs と targetExts を渡す
-			if (!shouldIncludeFile(fileRelative, finalTargetDirs, targetExts)) {
-				continue;
+			// 単一ファイル指定がある場合の処理、またはディレクトリ/拡張子フィルタリング
+			if (targetFile) {
+				// 単一ファイル指定がある場合、そのファイル以外はスキップ
+				if (fileRelative !== targetFile) {
+						continue;
+				}
+				// targetFile と一致した場合、以降の dir/ext フィルタは適用しない
+			} else {
+				// targetFile が指定されていない場合のみ、dir/ext フィルタを適用
+				if (!shouldIncludeFile(fileRelative, finalTargetDirs, targetExts)) {
+						continue;
+				}
 			}
 
 			const isReadmeFile = /readme\.md$/i.test(fileRelative);
