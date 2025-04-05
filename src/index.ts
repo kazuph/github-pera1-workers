@@ -452,12 +452,28 @@ app.get("/*", async (c) => {
 		// ブランチ名の決定 (クエリパラメータ > URLパス > デフォルト "main")
 		let branch = paramBranch || urlBranch || "main";
 
-		// ディレクトリの決定 (クエリパラメータ > URLパス)
+		// ディレクトリの決定 (クエリパラメータとURLパスを結合)
 		let finalTargetDirs: string[] = [];
 		if (queryDirs && queryDirs.length > 0) {
-			finalTargetDirs = queryDirs;
+				// クエリパラメータの dir が指定されている場合
+				if (urlDir) {
+						// URLパスにもディレクトリがある場合、結合する
+						const basePath = urlDir.endsWith('/') ? urlDir : urlDir + '/';
+						finalTargetDirs = queryDirs.map(d => {
+								const relativePath = d.startsWith('/') ? d.slice(1) : d;
+								// 結合時に末尾のスラッシュを統一（shouldIncludeFile の挙動に合わせる）
+								const combined = basePath + relativePath;
+								return combined.endsWith('/') ? combined : combined + '/';
+						});
+				} else {
+						// URLパスにディレクトリがない場合、クエリパラメータの dir をそのまま使用
+						// 末尾スラッシュ統一
+						finalTargetDirs = queryDirs.map(d => d.endsWith('/') ? d : d + '/');
+				}
 		} else if (urlDir) {
-			finalTargetDirs = [urlDir];
+				// クエリパラメータがなく、URLパスにディレクトリがある場合
+				// 末尾スラッシュ統一
+				finalTargetDirs = [urlDir.endsWith('/') ? urlDir : urlDir + '/'];
 		}
 		// 拡張子はクエリパラメータからのみ取得
 		const targetExts = queryExts || [];
