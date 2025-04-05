@@ -394,7 +394,7 @@ app.get("/*", async (c) => {
 		const queryExts = params.get("ext")?.split(",").map(e => e.trim().toLowerCase()).filter(e => e);
 		const isTreeMode = params.get("mode") === "tree";
 		const paramBranch = params.get("branch")?.trim();
-		const targetFile = params.get("file")?.trim();
+		const queryFile = params.get("file")?.trim(); // クエリパラメータのfile
 
 		if (!path) {
 			return createErrorResponse(c, "", "No repository URL provided", 400);
@@ -423,20 +423,29 @@ app.get("/*", async (c) => {
 		const owner = segments[0];
 		const repo = segments[1];
 
-		// URLパスからブランチ名とディレクトリパスを抽出
+		// URLパスからブランチ名、ディレクトリパス、ファイルパスを抽出
 		let urlBranch: string | undefined;
 		let urlDir: string | undefined;
+		let urlFilePath: string | undefined; // blob URL用のファイルパス
 
 		if (segments.length > 3 && segments[2] === "tree") {
 			// /tree/ の後の部分を解析 (例: /tree/branch/path/to/dir)
 			const branchAndDirParts = segments.slice(3);
 			urlBranch = branchAndDirParts[0]; // 最初の部分をブランチ名候補
 			if (branchAndDirParts.length > 1) {
-				urlDir = branchAndDirParts.slice(1).join("/"); // 残りをディレクトリパス候補
+				urlDir = branchAndDirParts.slice(1).join("/");
 			}
-		} else if (segments.length > 2 && segments[2] !== "tree") {
-			// /owner/repo/path/to/dir の場合 (ブランチはデフォルト)
-			urlDir = segments.slice(2).join("/");
+		} else if (segments.length > 3 && segments[2] === "blob") {
+			// /blob/ の後の部分を解析 (例: /blob/branch/path/to/file)
+			const branchAndFileParts = segments.slice(3);
+			urlBranch = branchAndFileParts[0];
+			if (branchAndFileParts.length > 1) {
+				urlFilePath = branchAndFileParts.slice(1).join("/"); // 残りをファイルパス候補
+			}
+		} else if (segments.length > 2 && segments[2] !== "tree" && segments[2] !== "blob") {
+			// /owner/repo/path/to/dir or /owner/repo/file.txt の場合 (ブランチはデフォルト)
+			// この時点ではディレクトリかファイルか不明瞭だが、後続の処理で targetFile が優先される
+			urlDir = segments.slice(2).join("/"); // 一旦ディレクトリとして扱う
 		}
 
 		// ブランチ名の決定 (クエリパラメータ > URLパス > デフォルト "main")
@@ -451,6 +460,8 @@ app.get("/*", async (c) => {
 		}
 		// 拡張子はクエリパラメータからのみ取得
 		const targetExts = queryExts || [];
+		// 単一ファイル指定の決定 (クエリパラメータ > URLパス)
+		const targetFile = queryFile || urlFilePath;
 
 		// ZIP取得
 		// ZIP取得とブランチのフォールバック処理
@@ -513,7 +524,7 @@ app.get("/*", async (c) => {
 
 			const fileRelative = fileObj.name.slice(rootPrefix.length);
 
-			// 単一ファイル指定がある場合、そのファイルのみを処理
+			// 単一ファイル指定がある場合、そのファイル以外はスキップ
 			if (targetFile && fileRelative !== targetFile) {
 				continue;
 			}
@@ -569,14 +580,20 @@ app.get("/*", async (c) => {
 			}
 		}
 
-		// 単一ファイル指定がある場合
+		// 単一ファイル指定がある場合の処理
 		if (targetFile) {
-			const fileEntry = Array.from(fileTree.entries()).find(([path]) => path === targetFile);
+			const fileEntry = fileTree.get(targetFile); // Map.get で直接取得
 			if (!fileEntry) {
-				return createErrorResponse(c, urlStr, `File not found: ${targetFile}`, 404);
+				// ファイルが見つからない場合のエラーメッセージを改善
+				const availableFiles = Array.from(fileTree.keys()).sort().join("\n - ");
+				const errorMsg = `File not found: ${targetFile}\n\nAvailable files matching filters (dir: ${finalTargetDirs.join(',') || 'none'}, ext: ${targetExts.join(',') || 'none'}):\n - ${availableFiles || '(No files found or matched filters)'}`;
+				return createErrorResponse(c, urlStr, errorMsg, 404);
 			}
-			
-			return c.text(fileEntry[1].content, 200);
+			// スキップされたファイル（バイナリ等）でないことを確認
+			if (fileEntry.content === undefined) {
+				return createErrorResponse(c, urlStr, `File content skipped (binary, large, etc.): ${targetFile}`, 400);
+			}
+			return c.text(fileEntry.content, 200);
 		}
 
 		// レスポンス生成
