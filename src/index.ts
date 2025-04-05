@@ -389,19 +389,9 @@ app.get("/*", async (c) => {
 		const path = url.pathname.slice(1);
 		const params = url.searchParams;
 
-		// パラメータ抽出
-		const targetDirs = (
-			params
-				.get("dir")
-				?.split(",")
-				.map((d) => d.trim()) || []
-		).filter((d) => d);
-		const targetExts = (
-			params
-				.get("ext")
-				?.split(",")
-				.map((e) => e.trim().toLowerCase()) || []
-		).filter((e) => e);
+		// パラメータ抽出 (クエリパラメータ)
+		const queryDirs = params.get("dir")?.split(",").map(d => d.trim()).filter(d => d);
+		const queryExts = params.get("ext")?.split(",").map(e => e.trim().toLowerCase()).filter(e => e);
 		const isTreeMode = params.get("mode") === "tree";
 		const paramBranch = params.get("branch")?.trim();
 		const targetFile = params.get("file")?.trim();
@@ -433,20 +423,65 @@ app.get("/*", async (c) => {
 		const owner = segments[0];
 		const repo = segments[1];
 
-		// ブランチ名の取得ロジックを改善
-		let branch = paramBranch;
-		if (!branch && segments.length > 3 && segments[2] === "tree") {
-			// segments[3]以降を結合してブランチ名に
-			branch = segments.slice(3).join("/");
-		} else {
-			branch = "main";
+		// URLパスからブランチ名とディレクトリパスを抽出
+		let urlBranch: string | undefined;
+		let urlDir: string | undefined;
+
+		if (segments.length > 3 && segments[2] === "tree") {
+			// /tree/ の後の部分を解析 (例: /tree/branch/path/to/dir)
+			const branchAndDirParts = segments.slice(3);
+			urlBranch = branchAndDirParts[0]; // 最初の部分をブランチ名候補
+			if (branchAndDirParts.length > 1) {
+				urlDir = branchAndDirParts.slice(1).join("/"); // 残りをディレクトリパス候補
+			}
+		} else if (segments.length > 2 && segments[2] !== "tree") {
+			// /owner/repo/path/to/dir の場合 (ブランチはデフォルト)
+			urlDir = segments.slice(2).join("/");
 		}
 
+		// ブランチ名の決定 (クエリパラメータ > URLパス > デフォルト "main")
+		let branch = paramBranch || urlBranch || "main";
+
+		// ディレクトリの決定 (クエリパラメータ > URLパス)
+		let finalTargetDirs: string[] = [];
+		if (queryDirs && queryDirs.length > 0) {
+			finalTargetDirs = queryDirs;
+		} else if (urlDir) {
+			finalTargetDirs = [urlDir];
+		}
+		// 拡張子はクエリパラメータからのみ取得
+		const targetExts = queryExts || [];
+
 		// ZIP取得
+		// ZIP取得とブランチのフォールバック処理
 		let zipResp = await fetchZip(owner, repo, branch);
-		if (!zipResp.ok && branch === "main") {
-			branch = "master";
-			zipResp = await fetchZip(owner, repo, branch);
+		if (!zipResp.ok) {
+			// ブランチが存在しない場合、デフォルトブランチ (main, master) を試す
+			const defaultBranches = ["main", "master"];
+			let foundBranch = false;
+			for (const defaultBranch of defaultBranches) {
+				// 現在試行中のブランチと同じ場合はスキップ
+				if (branch === defaultBranch) continue;
+
+				console.log(`🤔 Branch "${branch}" failed (${zipResp.status}). Trying default branch "${defaultBranch}"...`);
+				const tempResp = await fetchZip(owner, repo, defaultBranch);
+				if (tempResp.ok) {
+					branch = defaultBranch; // 成功したブランチ名に更新
+					zipResp = tempResp;
+					foundBranch = true;
+					console.log(`✅ Successfully switched to branch "${branch}"`);
+					break;
+				} else {
+					console.log(`👎 Default branch "${defaultBranch}" also failed (${tempResp.status}).`);
+				}
+			}
+
+			// デフォルトブランチでも失敗した場合
+			if (!foundBranch) {
+				const triedBranches = [paramBranch, urlBranch, "main", "master"].filter(Boolean).join('", "');
+				const errorMsg = `Failed to fetch zip for tried branches ("${triedBranches}"): ${zipResp.status} ${zipResp.statusText}`;
+				return createErrorResponse(c, urlStr, errorMsg, zipResp.status as 404 | 403 | 500);
+			}
 		}
 
 		if (!zipResp.ok) {
@@ -483,8 +518,9 @@ app.get("/*", async (c) => {
 				continue;
 			}
 
-			// ツリーモードでもフィルタを適用し、指定dirやextに該当しないファイルは除外する
-			if (!shouldIncludeFile(fileRelative, targetDirs, targetExts)) {
+			// フィルタリング (ディレクトリと拡張子)
+			// shouldIncludeFile に finalTargetDirs と targetExts を渡す
+			if (!shouldIncludeFile(fileRelative, finalTargetDirs, targetExts)) {
 				continue;
 			}
 
