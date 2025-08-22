@@ -1,6 +1,6 @@
 {
   "name": "pera1",
-  "version": "1.2.0",
+  "version": "1.1.0",
   "license": "MIT",
   "scripts": {
     "dev": "wrangler dev",
@@ -8,6 +8,8 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
+    "@hono/mcp": "^0.1.1",
+    "@modelcontextprotocol/sdk": "^1.17.4",
     "hono": "^4.7.5",
     "jszip": "^3.10.1"
   },

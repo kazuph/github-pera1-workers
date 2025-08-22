@@ -1,8 +1,16 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import JSZip from "jszip";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPTransport } from '@hono/mcp';
 
 const app = new Hono();
+
+// MCP サーバーの設定
+const mcpServer = new McpServer({
+  name: 'github-pera1-mcp-server',
+  version: '1.1.0',
+});
 
 // GitHub リポジトリの例
 const EXAMPLE_REPO = "https://github.com/kazuph/github-pera1-workers";
@@ -383,6 +391,13 @@ function shouldIncludeFile(
 
 	return true;
 }
+
+// MCP エンドポイント
+app.all('/mcp', async (c) => {
+  const transport = new StreamableHTTPTransport()
+  await mcpServer.connect(transport)
+  return transport.handleRequest(c)
+});
 
 app.get("/*", async (c) => {
 	try {
