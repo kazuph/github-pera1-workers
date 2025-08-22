@@ -3,14 +3,202 @@ import type { Context } from "hono";
 import JSZip from "jszip";
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPTransport } from '@hono/mcp';
+import { z } from 'zod';
 
 const app = new Hono();
 
 // MCP サーバーの設定
 const mcpServer = new McpServer({
   name: 'github-pera1-mcp-server',
-  version: '1.1.0',
+  version: '1.2.0',
 });
+
+// GitHubコード取得ツールの登録
+mcpServer.registerTool(
+  'fetch_github_code',
+  {
+    title: 'GitHub Code Fetcher',
+    description: 'Fetch code from GitHub repositories with flexible filtering options',
+    inputSchema: {
+      url: z.string().describe('GitHub repository URL (e.g., https://github.com/owner/repo)'),
+      dir: z.string().optional().describe('Filter by directory paths (comma-separated, optional)'),
+      ext: z.string().optional().describe('Filter by file extensions (comma-separated, without dots, optional)'),
+      branch: z.string().optional().describe('Branch name (optional, defaults to main/master)'),
+      file: z.string().optional().describe('Retrieve a specific file (optional)'),
+      mode: z.enum(['tree', 'full']).optional().describe('Display mode: tree (structure only) or full (with content)')
+    }
+  },
+  async (args) => {
+    try {
+      // 既存のGitHub処理ロジックを再利用
+      const result = await processGitHubRepository(args);
+      
+      return {
+        content: [{
+          type: 'text',
+          text: result
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch GitHub code: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+);
+
+// 既存のGitHub処理ロジックを関数として抽出
+async function processGitHubRepository(params: any): Promise<string> {
+  const { url, dir, ext, branch: paramBranch, file: queryFile, mode } = params;
+  
+  let parsed: URL;
+  try {
+    parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+  } catch (error) {
+    throw new Error(`Invalid URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  if (segments.length < 2) {
+    throw new Error("Invalid GitHub repository URL format");
+  }
+
+  const owner = segments[0];
+  const repo = segments[1];
+  
+  // パラメータの処理
+  const queryDirs = dir?.split(",").map(d => d.trim()).filter(d => d);
+  const queryExts = ext?.split(",").map(e => e.trim().toLowerCase()).filter(e => e);
+  const isTreeMode = mode === "tree";
+  
+  // URLパスからの情報抽出は簡略化（パラメータ優先）
+  let branch = paramBranch || "main";
+  let finalTargetDirs: string[] = [];
+  if (queryDirs && queryDirs.length > 0) {
+    finalTargetDirs = queryDirs.map(d => d.endsWith('/') ? d : d + '/');
+  }
+  const targetExts = queryExts || [];
+  const targetFile = queryFile;
+
+  // ZIP取得
+  let zipResp = await fetchZip(owner, repo, branch);
+  if (!zipResp.ok) {
+    // デフォルトブランチへのフォールバック
+    const defaultBranches = ["main", "master"];
+    let foundBranch = false;
+    for (const defaultBranch of defaultBranches) {
+      if (branch === defaultBranch) continue;
+      
+      const tempResp = await fetchZip(owner, repo, defaultBranch);
+      if (tempResp.ok) {
+        branch = defaultBranch;
+        zipResp = tempResp;
+        foundBranch = true;
+        break;
+      }
+    }
+    
+    if (!foundBranch) {
+      throw new Error(`Failed to fetch repository: ${zipResp.status} ${zipResp.statusText}`);
+    }
+  }
+
+  const arrayBuffer = await zipResp.arrayBuffer();
+  const jszip = await JSZip.loadAsync(arrayBuffer);
+  const rootPrefix = `${repo}-${branch}/`;
+
+  // TypeScript プロジェクト判定
+  const hasTsConfig = Object.keys(jszip.files).some(
+    (name) => name.startsWith(rootPrefix) && name.endsWith("tsconfig.json")
+  );
+
+  const fileTree = new Map<string, { size: number; content: string; isTruncated?: boolean }>();
+  let originalTotalSize = 0;
+  let displayTotalSize = 0;
+
+  for (const fileObj of Object.values(jszip.files)) {
+    if (fileObj.dir) continue;
+    if (!fileObj.name.startsWith(rootPrefix)) continue;
+
+    const fileRelative = fileObj.name.slice(rootPrefix.length);
+
+    // ファイルフィルタリング
+    if (targetFile) {
+      if (fileRelative !== targetFile) continue;
+    } else {
+      if (!shouldIncludeFile(fileRelative, finalTargetDirs, targetExts)) continue;
+    }
+
+    const isReadmeFile = /readme\.md$/i.test(fileRelative);
+
+    if (isTreeMode && !isReadmeFile) {
+      fileTree.set(fileRelative, { size: 0, content: "" });
+    } else {
+      const content = await fileObj.async("string");
+      const size = new TextEncoder().encode(content).length;
+
+      if (shouldSkipFile(fileRelative, size, content, hasTsConfig)) {
+        continue;
+      }
+      
+      let isTruncated = false;
+      let processedContent = content;
+      let displaySize = size;
+      
+      if (size > MAX_DISPLAY_FILE_SIZE) {
+        processedContent = content.substring(0, MAX_DISPLAY_FILE_SIZE);
+        const remainingSize = (size - MAX_DISPLAY_FILE_SIZE) / 1024;
+        processedContent += `\n\nThis file is too large, truncated at 30KB. There is ${remainingSize.toFixed(2)}KB remaining.`;
+        isTruncated = true;
+        displaySize = MAX_DISPLAY_FILE_SIZE;
+      }
+      
+      originalTotalSize += size;
+      displayTotalSize += displaySize;
+      
+      fileTree.set(fileRelative, { 
+        size, 
+        content: processedContent,
+        isTruncated
+      });
+    }
+  }
+
+  // 単一ファイル指定の場合
+  if (targetFile) {
+    const fileEntry = fileTree.get(targetFile);
+    if (!fileEntry) {
+      throw new Error(`File not found: ${targetFile}`);
+    }
+    return fileEntry.content;
+  }
+
+  // レスポンス生成
+  if (isTreeMode) {
+    let resultText = "# Directory Structure\n\n";
+    resultText += createTreeDisplay(fileTree, false);
+    
+    const readmeFiles = Array.from(fileTree.entries())
+      .filter(([path, { content }]) => /readme\.md$/i.test(path) && content);
+    
+    if (readmeFiles.length > 0) {
+      resultText += "\n# README Files\n\n";
+      for (const [path, { content }] of readmeFiles) {
+        resultText += `## ${path}\n\n${content}\n\n`;
+      }
+    }
+    
+    return resultText;
+  } else {
+    let resultText = "# 📁 File Tree\n\n";
+    resultText += createTreeDisplay(fileTree, true);
+
+    resultText += `\n# 📝 Files (Total: ${(originalTotalSize / 1024).toFixed(2)} KB→${(displayTotalSize / 1024).toFixed(2)} KB)\n\n`;
+    for (const [path, { content }] of fileTree) {
+      resultText += `\`\`\`${path}\n${content}\n\`\`\`\n\n`;
+    }
+
+    return resultText;
+  }
+}
 
 // GitHub リポジトリの例
 const EXAMPLE_REPO = "https://github.com/kazuph/github-pera1-workers";
