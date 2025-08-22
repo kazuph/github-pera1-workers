@@ -14,22 +14,33 @@ const mcpServer = new McpServer({
 });
 
 // GitHubコード取得ツールの登録
-mcpServer.registerTool(
-  'fetch_github_code',
-  {
-    title: 'GitHub Code Fetcher',
-    description: 'Fetch code from GitHub repositories with flexible filtering options',
-    inputSchema: {
-      url: z.string().describe('GitHub repository URL (e.g., https://github.com/owner/repo)'),
-      dir: z.string().optional().describe('Filter by directory paths (comma-separated, optional)'),
-      ext: z.string().optional().describe('Filter by file extensions (comma-separated, without dots, optional)'),
-      branch: z.string().optional().describe('Branch name (optional, defaults to main/master)'),
-      file: z.string().optional().describe('Retrieve a specific file (optional)'),
-      mode: z.enum(['tree', 'full']).optional().describe('Display mode: tree (structure only) or full (with content)')
-    }
-  },
+mcpServer.registerTool("fetch_github_code", {
+  title: "GitHub Code Fetcher",
+  description: "Fetch code from GitHub repositories with flexible filtering options",
+  inputSchema: {
+    url: z.string().describe("GitHub repository URL (e.g., https://github.com/owner/repo)"),
+    dir: z.string().optional().describe("Filter by directory path (optional)"),
+    ext: z.string().optional().describe("Filter by file extensions (optional)"),
+    branch: z.string().optional().describe("Git branch name (optional)"),
+    file: z.string().optional().describe("Specific file to fetch (optional)"),
+    mode: z.enum(["tree", "full"]).optional().describe("Display mode (optional)")
+  }
+},
   async (args) => {
     try {
+      // パラメータバリデーション
+      if (!args || typeof args !== 'object') {
+        throw new Error('Arguments are required');
+      }
+      
+      if (!args.url) {
+        throw new Error('URL parameter is required. Please provide a GitHub repository URL (e.g., https://github.com/owner/repo)');
+      }
+      
+      if (typeof args.url !== 'string' || args.url.trim() === '') {
+        throw new Error('URL must be a non-empty string');
+      }
+      
       // 既存のGitHub処理ロジックを再利用
       const result = await processGitHubRepository(args);
       
