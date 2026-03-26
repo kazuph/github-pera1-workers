@@ -531,6 +531,13 @@ export function createLandingPage(
       setTimeout(function() { window.location.href = finalUrl; }, 300);
     });
 
+    document.getElementById('repo-url').addEventListener('keydown', function(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        form.dispatchEvent(new Event('submit', { cancelable: true }));
+      }
+    });
+
     copyBtn.addEventListener('click', function() {
       navigator.clipboard.writeText(resultUrl.textContent).then(function() {
         copyBtn.textContent = 'Copied!';
