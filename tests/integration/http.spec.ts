@@ -11,16 +11,14 @@ import {
 // system boundary (outbound HTTP) and returns realistic ZIP responses.
 // ---------------------------------------------------------------------------
 
-const originalFetch = globalThis.fetch;
-let fetchInterceptor: (url: string | URL | Request, init?: RequestInit) => Promise<Response> | null;
+type FetchHandler = (url: string, init?: RequestInit) => Promise<Response | null>;
 
-function installFetchInterceptor(
-  handler: (url: string, init?: RequestInit) => Promise<Response> | null,
-) {
-  fetchInterceptor = handler;
+const originalFetch = globalThis.fetch;
+
+function installFetchInterceptor(handler: FetchHandler) {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const urlStr = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const result = handler(urlStr, init);
+    const result = await handler(urlStr, init);
     if (result) return result;
     return originalFetch(input, init as any);
   }) as typeof fetch;
@@ -31,10 +29,9 @@ function restoreFetch() {
 }
 
 // Default: return a valid ZIP for any codeload.github.com request
-async function defaultZipHandler(url: string): Promise<Response> | null {
+async function defaultZipHandler(url: string): Promise<Response | null> {
   if (!url.includes("codeload.github.com")) return null;
 
-  // Parse: https://codeload.github.com/{owner}/{repo}/zip/{branch}
   const match = url.match(/codeload\.github\.com\/([^/]+)\/([^/]+)\/zip\/(.+)/);
   if (!match) return null;
 
@@ -48,7 +45,7 @@ async function defaultZipHandler(url: string): Promise<Response> | null {
 
 // Helper to make requests to the app
 function request(path: string, method = "GET"): Promise<Response> {
-  return app.fetch(new Request(`http://localhost${path}`, { method }));
+  return app.fetch(new Request(`http://localhost${path}`, { method })) as Promise<Response>;
 }
 
 // ====================================================================
