@@ -15,13 +15,14 @@ export function createTreeDisplay(
   }
 
   const sortedDirs = Array.from(dirs).sort();
+  const dirsArray = sortedDirs; // already an array, avoid re-conversion
   let result = "";
 
   for (const dir of sortedDirs) {
     const depth = dir.split("/").length - 1;
     const indent = "  ".repeat(depth);
     const name = dir.split("/").pop() || "";
-    const isFile = !Array.from(dirs).some((d) => d.startsWith(dir + "/"));
+    const isFile = !dirsArray.some((d) => d.startsWith(dir + "/"));
 
     if (showSize && isFile) {
       const fileInfo = fileTree.get(dir);

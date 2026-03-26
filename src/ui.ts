@@ -1,5 +1,26 @@
 import { APP_VERSION, EXAMPLE_REPO } from "./constants";
 
+/** Escape HTML special characters to prevent XSS */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Escape a string for safe embedding inside a JavaScript string literal */
+function escapeJs(str: string): string {
+  return str
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, "\\x3c")
+    .replace(/>/g, "\\x3e")
+    .replace(/\n/g, "\\n");
+}
+
 /** Generate the landing page HTML */
 export function createLandingPage(
   protocol: string,
@@ -7,9 +28,13 @@ export function createLandingPage(
   errorMessage?: string,
   targetUrl?: string,
 ): string {
+  const safeProtocol = escapeHtml(protocol);
+  const safeHost = escapeHtml(host);
+  const safeTargetUrl = targetUrl ? escapeHtml(targetUrl) : "";
+  const safeErrorMessage = errorMessage ? escapeHtml(errorMessage) : "";
   const fullUrl = targetUrl
-    ? `${protocol}://${host}/${targetUrl}`
-    : `${protocol}://${host}/${EXAMPLE_REPO.replace("https://", "")}`;
+    ? `${safeProtocol}://${safeHost}/${safeTargetUrl}`
+    : `${safeProtocol}://${safeHost}/${escapeHtml(EXAMPLE_REPO.replace("https://", ""))}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -375,14 +400,14 @@ export function createLandingPage(
       <p>Fetch GitHub repos as plain text for LLMs. Paste a URL, get code instantly.</p>
     </div>
 
-    ${errorMessage ? `<div class="error-banner">Error: ${errorMessage}</div>` : ""}
+    ${safeErrorMessage ? `<div class="error-banner">Error: ${safeErrorMessage}</div>` : ""}
 
     <div class="form-card">
       <h2>&#128269; Fetch Repository</h2>
       <form id="pera1-form">
         <div class="form-group">
           <label for="repo-url">GitHub Repository URL</label>
-          <input type="text" id="repo-url" placeholder="https://github.com/owner/repo" value="${targetUrl || ""}" autocomplete="url" required>
+          <input type="text" id="repo-url" placeholder="https://github.com/owner/repo" value="${safeTargetUrl}" autocomplete="url" required>
           <div class="form-hint">Full GitHub URL or owner/repo format</div>
         </div>
 
@@ -452,12 +477,12 @@ export function createLandingPage(
     <div class="usage">
       <h2>Quick Start</h2>
       <ul>
-        <li>Basic: <code>${protocol}://${host}/github.com/owner/repo</code></li>
-        <li>Branch: <code>${protocol}://${host}/github.com/owner/repo/tree/dev</code></li>
-        <li>Filter: <code>${protocol}://${host}/github.com/owner/repo?dir=src&amp;ext=ts</code></li>
-        <li>File: <code>${protocol}://${host}/github.com/owner/repo?file=README.md</code></li>
-        <li>Tree: <code>${protocol}://${host}/github.com/owner/repo?mode=tree</code></li>
-        <li>MCP: <code>${protocol}://${host}/mcp</code></li>
+        <li>Basic: <code>${safeProtocol}://${safeHost}/github.com/owner/repo</code></li>
+        <li>Branch: <code>${safeProtocol}://${safeHost}/github.com/owner/repo/tree/dev</code></li>
+        <li>Filter: <code>${safeProtocol}://${safeHost}/github.com/owner/repo?dir=src&amp;ext=ts</code></li>
+        <li>File: <code>${safeProtocol}://${safeHost}/github.com/owner/repo?file=README.md</code></li>
+        <li>Tree: <code>${safeProtocol}://${safeHost}/github.com/owner/repo?mode=tree</code></li>
+        <li>MCP: <code>${safeProtocol}://${safeHost}/mcp</code></li>
       </ul>
     </div>
 
@@ -488,7 +513,7 @@ export function createLandingPage(
         if (val) params.set(field, val);
       });
 
-      let finalUrl = '${protocol}://${host}/' + baseUrl;
+      let finalUrl = '${escapeJs(protocol)}://${escapeJs(host)}/' + baseUrl;
       const qs = params.toString();
       if (qs) finalUrl += '?' + qs;
 
