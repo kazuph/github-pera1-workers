@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Go to Pera1",
+  "version": "1.0.0",
+  "description": "Add a 'Go to Pera1' button on GitHub repository pages to quickly fetch code as plain text for LLMs.",
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

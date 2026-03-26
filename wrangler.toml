@@ -1,5 +1,9 @@
 name = "pera1"
 main = "src/index.ts"
-compatibility_date = "2023-12-05"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
 
 assets = { directory = "./public/" }
+
+[env.preview]
+name = "pera1-preview"
