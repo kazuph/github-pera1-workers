@@ -407,8 +407,8 @@ export function createLandingPage(
       <form id="pera1-form">
         <div class="form-group">
           <label for="repo-url">GitHub Repository URL</label>
-          <input type="text" id="repo-url" placeholder="https://github.com/owner/repo" value="${safeTargetUrl}" autocomplete="url" required>
-          <div class="form-hint">Full GitHub URL or owner/repo format</div>
+          <input type="text" id="repo-url" placeholder="https://github.com/owner/repo or git@github.com:owner/repo.git" value="${safeTargetUrl}" autocomplete="url" required>
+          <div class="form-hint">HTTPS, SSH (git@), or owner/repo format</div>
         </div>
 
         <div class="form-row">
@@ -504,6 +504,13 @@ export function createLandingPage(
       if (!repoUrl) return;
 
       let baseUrl = repoUrl;
+      // Normalize SSH/SCP-style git URLs client-side
+      // git@github.com:owner/repo.git → github.com/owner/repo
+      var scpMatch = baseUrl.match(/^(?:ssh:\\/\\/)?git@([^:/]+)[:\\/](.+?)(?:\\.git)?$/);
+      if (scpMatch) { baseUrl = scpMatch[1] + '/' + scpMatch[2]; }
+      var gitMatch = baseUrl.match(/^git:\\/\\/([^/]+)\\/(.+?)(?:\\.git)?$/);
+      if (gitMatch) { baseUrl = gitMatch[1] + '/' + gitMatch[2]; }
+      baseUrl = baseUrl.replace(/\\.git$/, '');
       if (baseUrl.startsWith('https://')) baseUrl = baseUrl.substring(8);
       if (baseUrl.startsWith('http://')) baseUrl = baseUrl.substring(7);
 

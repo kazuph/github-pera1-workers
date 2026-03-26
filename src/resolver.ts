@@ -1,16 +1,38 @@
 import type { ResolvedRequest } from "./types";
 
 /**
+ * Normalize various repository input formats into an HTTPS URL path.
+ *
+ * Supported formats:
+ * - git@github.com:owner/repo.git  (SCP-style SSH)
+ * - ssh://git@github.com/owner/repo.git
+ * - git://github.com/owner/repo.git
+ * - https://github.com/owner/repo.git
+ * - github.com/owner/repo
+ */
+function normalizeRepositoryInput(raw: string): string {
+  // SCP-style: git@github.com:owner/repo.git
+  const scpMatch = raw.match(
+    /^(?:ssh:\/\/)?git@([^:/]+)[:/](.+?)(?:\.git)?$/,
+  );
+  if (scpMatch) {
+    return `https://${scpMatch[1]}/${scpMatch[2]}`;
+  }
+
+  // git:// protocol
+  const gitProtoMatch = raw.match(/^git:\/\/([^/]+)\/(.+?)(?:\.git)?$/);
+  if (gitProtoMatch) {
+    return `https://${gitProtoMatch[1]}/${gitProtoMatch[2]}`;
+  }
+
+  // Strip trailing .git from any remaining format
+  const stripped = raw.replace(/\.git$/, "");
+  return stripped.startsWith("http") ? stripped : `https://${stripped}`;
+}
+
+/**
  * Resolve a request's URL path and query parameters into structured parameters
  * for GitHub repository processing.
- *
- * Handles:
- * - path → URL conversion
- * - GitHub URL validation
- * - tree/blob/plain path extraction of branch, dir, file
- * - Branch priority: query param > URL path > default "main"
- * - urlDir + query dir combination
- * - query file + urlDir combination
  */
 export function resolveRequest(
   path: string,
@@ -20,7 +42,7 @@ export function resolveRequest(
     throw new Error("No repository URL provided");
   }
 
-  const urlStr = path.startsWith("http") ? path : `https://${path}`;
+  const urlStr = normalizeRepositoryInput(path);
 
   let parsed: URL;
   try {
