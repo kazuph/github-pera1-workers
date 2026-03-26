@@ -11,7 +11,9 @@
     "deploy:workers": "wrangler deploy --minify",
     "typecheck": "tsc --noEmit",
     "typecheck:native": "node node_modules/@typescript/native-preview/bin/tsgo.js --noEmit",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hono/mcp": "^0.1.1",
@@ -26,6 +28,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260326.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.3",
+    "vitest": "^4.1.2",
     "wrangler": "^4.7.2"
   }
 }
