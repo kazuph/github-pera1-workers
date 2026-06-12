@@ -35,6 +35,9 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
+      # permissionsを明示すると未指定スコープはnoneになる。
+      # 現状publicリポジトリなのでcheckoutは通るが、private化に備えて明示する
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v6
