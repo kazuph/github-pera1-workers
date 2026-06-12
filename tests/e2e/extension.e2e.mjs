@@ -23,6 +23,8 @@ import { createRequire } from "node:module";
 function loadPlaywright() {
   for (const base of [process.cwd(), join(homedir(), "node_modules")]) {
     try {
+      // 末尾セパレータ付きディレクトリはcreateRequireの正規の基点。
+      // join(base, "/") はbaseを保持して "<base>/" を返す（"/"にはならない）。
       const req = createRequire(join(base, "/"));
       return req("playwright");
     } catch {
