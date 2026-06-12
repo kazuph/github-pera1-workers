@@ -1,8 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Go to Pera1",
-  "version": "1.0.0",
-  "description": "Add a 'Go to Pera1' button on GitHub repository pages to quickly fetch code as plain text for LLMs.",
+  "version": "1.1.0",
+  "description": "Open the current GitHub repository in Pera1 (single-page code view for LLMs) with one click on the toolbar icon, or via the in-page button.",
+  "action": {
+    "default_title": "Open in Pera1"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["activeTab"],
   "content_scripts": [
     {
       "matches": ["https://github.com/*/*"],
@@ -11,6 +19,8 @@
     }
   ],
   "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
     "48": "icon48.png",
     "128": "icon128.png"
   }

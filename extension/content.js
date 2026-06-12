@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const PERA1_HOST = "pera1.pages.dev";
+  const PERA1_HOST = "pera1.kazu-san.workers.dev";
   const BUTTON_ID = "pera1-goto-btn";
 
   function getRepoPath() {
@@ -14,30 +14,32 @@
     return segments.slice(0, 2).join("/");
   }
 
-  function createButton(repoPath) {
+  function createButton(repoPath, inActions) {
     const btn = document.createElement("a");
     btn.id = BUTTON_ID;
     btn.href = `https://${PERA1_HOST}/github.com/${repoPath}`;
     btn.target = "_blank";
     btn.rel = "noopener noreferrer";
     btn.textContent = "Go to Pera1";
+    // GitHubの小サイズボタン（高さ28px）に合わせ、Watch/Fork/Starの並びに馴染ませる
     btn.style.cssText = [
       "display: inline-flex",
       "align-items: center",
-      "gap: 4px",
-      "margin-left: 8px",
-      "padding: 3px 10px",
+      "height: 28px",
+      "padding: 0 12px",
       "font-size: 12px",
       "font-weight: 600",
       "color: #fff",
       "background: #0969da",
       "border-radius: 6px",
       "text-decoration: none",
-      "vertical-align: middle",
-      "line-height: 1.5",
+      "line-height: 1",
       "cursor: pointer",
       "transition: background 0.15s",
-    ].join(";");
+      inActions ? "" : "margin-left: 8px",
+    ]
+      .filter(Boolean)
+      .join(";");
 
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "#0550ae";
@@ -56,7 +58,17 @@
     const repoPath = getRepoPath();
     if (!repoPath) return;
 
-    // Try multiple selectors for GitHub's repo heading area
+    // 第一候補: Watch/Fork/Star が並ぶアクションエリアの先頭に置く
+    // （リポジトリ名の横はレイアウト次第で折り返して崩れるため）
+    const actions = document.querySelector("ul.pagehead-actions");
+    if (actions) {
+      const li = document.createElement("li");
+      li.appendChild(createButton(repoPath, true));
+      actions.prepend(li);
+      return;
+    }
+
+    // フォールバック: リポジトリ名の横
     const selectors = [
       "#repository-container-header strong[itemprop='name'] a",
       "#repository-container-header .AppHeader-context-item-label",
@@ -72,7 +84,7 @@
 
     if (!anchor) return;
 
-    const btn = createButton(repoPath);
+    const btn = createButton(repoPath, false);
     // Insert after the repo name element
     const parent = anchor.closest("li") || anchor.parentElement;
     if (parent) {
