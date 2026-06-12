@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { CACHE_ERROR_MAX_AGE, CACHE_MAX_AGE } from "./constants";
 import { handleGitHubRequest } from "./github";
-import { mcpServer } from "./mcp";
+import { createMcpServer } from "./mcp";
 import { resolveRequest } from "./resolver";
 import { createErrorPage, createLandingPage } from "./ui";
 
@@ -11,6 +11,7 @@ const app = new Hono();
 // MCP endpoint
 app.all("/mcp", async (c) => {
   const transport = new StreamableHTTPTransport();
+  const mcpServer = createMcpServer();
   await mcpServer.connect(transport);
   return transport.handleRequest(c);
 });
