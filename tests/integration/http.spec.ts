@@ -148,6 +148,40 @@ describe("HTTP Integration Tests", () => {
   });
 
   // ------------------------------------------------------------------
+  // Test 6b: MCP — 連続リクエストのregressionテスト
+  // 単一のMcpServerインスタンスへ複数transportをconnectすると
+  // "Already connected to a transport" で2回目以降が500になるバグの再発防止
+  // ------------------------------------------------------------------
+  it("Test 6b: MCP endpoint survives multiple sequential initialize requests", async () => {
+    const initializePayload = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "integration-test", version: "1.0" },
+      },
+    });
+
+    for (let i = 0; i < 3; i++) {
+      const res = (await app.fetch(
+        new Request("http://localhost/mcp", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+          },
+          body: initializePayload,
+        }),
+      )) as Response;
+      expect(res.status, `request #${i + 1} should succeed`).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("github-pera1-mcp-server");
+    }
+  });
+
+  // ------------------------------------------------------------------
   // Test 7: SSH URL — GET /git@github.com:owner/repo.git
   // ------------------------------------------------------------------
   it("Test 7: SSH URL is parsed correctly", async () => {
